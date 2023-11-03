@@ -3,7 +3,8 @@
   (:require [clojure.string :as str]
             [rewrite-clj.zip :as z]
             [rewrite-clj.node.protocols :as node.protocols]
-            [liima.rewrite])
+            [liima.rewrite]
+            [liima.fs])
   (:import [java.io File]))
 
 ;; We can't simply stringify our refs, as calling `string` on a parent node would give us
@@ -16,19 +17,12 @@
 ;; contains that specific representation is practically negligible, making it _appear_ like less of a hack.
 ;; Just in case.
 
-^{:liima/ref :liima.blocks/global-registry}
-(defonce
-  ^{:docstring "Global registry of code blocks, their associated content, and UUIDs"}
-  !global-registry
-  (atom {}))
-
 (def ^:private ^:const block-regex
   #"<<liima-block:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})>>")
 
 (defn- make-block-str [uuid]
   (format "<<liima-block:%s>>" uuid))
 
-^{:liima/ref :liima.blocks/block}
 (defrecord Block [block-id uuid content]
   node.protocols/Node
   (tag [_node] ::block)
@@ -54,31 +48,30 @@
 (defn replace-block
   "Replace references of `block-id` in string `s` with `replacement`.
    `block-id` must be a unique entry within `!registry`."
-  [!registry s block-id replacement]
-  (let [uuid (get-in @!registry [block-id :uuid])]
+  [registry s block-id replacement]
+  (let [uuid (get-in registry [block-id :uuid])]
     (str/replace s (make-block-str uuid) replacement)))
 
 (defn find-blocks
   "Find all unique block ids in string `s` using `!registry`.
   Block ids are expected to be found as unique entries in the registry."
-  [!registry s]
-  (when-let [uuid->block-id (some->> @!registry vals (map (juxt :uuid :block-id)) (into {}))]
+  [registry s]
+  (when-let [uuid->block-id (some->> registry vals (map (juxt :uuid :block-id)) (into {}))]
     (some->> (re-seq block-regex s)
              (map (comp uuid->block-id second))
              set)))
 
-^{:liima/ref :liima.blocks/resolve-content}
 (defn resolve-content
-  "Resolve the content in a block using `block-id` and optional `replacements` via `!registry`.
+  "Resolve the content in a block using `block-id` and optional `replacements` via `registry`.
   `replacements` should be a map of block ids to content strings.
   If the parent content string contains block references not included in `replacements`,
   the referenced blocks' original content strings will be used (as found in the registry)."
-  ([!registry block-id]
-   (resolve-content !registry block-id {}))
-  ([!registry block-id replacements]
-   (let [content               (get-in @!registry [block-id :content])
-         blocks-needed         (find-blocks !registry content)
-         default-replacements  (->> @!registry
+  ([registry block-id]
+   (resolve-content registry block-id {}))
+  ([registry block-id replacements]
+   (let [content               (get-in registry [block-id :content])
+         blocks-needed         (find-blocks registry content)
+         default-replacements  (->> registry
                                     (keep (fn [[k v]]
                                             (when (contains? blocks-needed k)
                                               [k (:content v)])))
@@ -86,7 +79,7 @@
          replacements          (select-keys (merge default-replacements replacements) blocks-needed)]
      (if (seq replacements)
        (reduce (fn [acc [ref-name content]]
-                 (replace-block !registry acc ref-name content))
+                 (replace-block registry acc ref-name content))
                content
                replacements)
        content))))
@@ -115,4 +108,18 @@
   (-> (z/of-file* file)
       (liima.rewrite/clean-meta liima-keyword? (partial handle-block-upsert-with-zipper! !registry)))
   @!registry)
+
+(defn make-registry-from-files
+  "Create a registry of blocks using `files`.
+  Returns registry."
+  [files]
+  (let [!registry (atom {})]
+    (doseq [file files]
+      (sync-registry-with-file! !registry file))
+    @!registry))
+
+(def make-registry-from-classpath
+  "Create a registry of blocks using classpath.
+  Returns registry."
+  (comp make-registry-from-files liima.fs/find-classpath-files))
 
