@@ -1,7 +1,7 @@
 (ns liima.rewrite-test
   (:require [clojure.test :refer [deftest is testing]]
             [rewrite-clj.zip :as z]
-            [liima.rewrite :refer [clean-meta]]))
+            [liima.rewrite :refer [clean-meta guess-namespace]]))
 
 (deftest test-clean-meta
   (testing "without side-effects"
@@ -23,3 +23,9 @@
              (process "^{:borked false :liima/key :value} (def ^:leave-me-be ^:liima/form a 1)")
              (process "^{ \n  :liima/ignore :me    :borked false  \n  :liima/key  :value   } (def ^:leave-me-be ^:liima/form a 1)"))))))
 
+(deftest test-guess-namespace
+  (is (nil? (-> (z/of-string "\n:nothing-to-see-here\n")
+                (guess-namespace))))
+  (is (= "some.namespace"
+         (-> (z/of-string "(def thing (let [x 1] x))\n (ns\n\n\nsome.namespace)\n (do (something)) ")
+             (guess-namespace)))))

@@ -5,7 +5,7 @@
 
 (def ^:private recognized-resolvers
   {"content" liima.core/resolve-content
-   "ns"      (constantly "TODO")})
+   "ns"      (fn [reg block-id] (get-in reg [block-id :presumed-ns]))})
 
 (def ^:private re-template
   (re-pattern

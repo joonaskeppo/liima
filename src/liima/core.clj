@@ -23,7 +23,7 @@
 (defn- make-block-str [uuid]
   (format "<<liima-block:%s>>" uuid))
 
-(defrecord Block [block-id uuid content]
+(defrecord Block [block-id uuid content presumed-ns]
   node.protocols/Node
   (tag [_node] ::block)
   (node-type [_node] ::block)
@@ -39,9 +39,9 @@
   "Upserts a new Block into `!registry` under `block-id`.
   Creates, then assocs, a Block object with `block-id` and `content`.
   Returns created Block."
-  [!registry block-id content]
+  [!registry presumed-ns block-id content]
   (let [uuid  (str (random-uuid))
-        block (->Block block-id uuid content)]
+        block (->Block block-id uuid content presumed-ns)]
     (swap! !registry assoc block-id block)
     block))
 
@@ -90,23 +90,28 @@
 
 (defn- handle-block-upsert-with-zipper!
   "Handle upserting a block to `!registry` from zipper `zloc` and metadata `m`.
+  `presumed-ns` is a best-effort guess at the namespace of the block.
   Returns updated zipper value."
-  [!registry zloc m]
+  [!registry presumed-ns zloc m]
   (if-let [block-id (:liima/ref m)]
-    (let [block (upsert-block! !registry block-id (z/string zloc))]
+    (let [block (upsert-block! !registry presumed-ns block-id (z/string zloc))]
       (z/replace zloc block))
     zloc))
 
 (defn sync-registry-with-string!
   [!registry ^String s]
-  (-> (z/of-string* s)
-      (liima.rewrite/clean-meta liima-keyword? (partial handle-block-upsert-with-zipper! !registry)))
+  (let [zloc        (z/of-string* s)
+        presumed-ns (liima.rewrite/guess-namespace zloc)
+        upsert!     (partial handle-block-upsert-with-zipper! !registry presumed-ns)]
+    (liima.rewrite/clean-meta zloc liima-keyword? upsert!))
   @!registry)
 
 (defn sync-registry-with-file!
   [!registry ^File file]
-  (-> (z/of-file* file)
-      (liima.rewrite/clean-meta liima-keyword? (partial handle-block-upsert-with-zipper! !registry)))
+  (let [zloc        (z/of-file* file)
+        presumed-ns (liima.rewrite/guess-namespace zloc)
+        upsert!     (partial handle-block-upsert-with-zipper! !registry presumed-ns)]
+    (liima.rewrite/clean-meta zloc liima-keyword? upsert!))
   @!registry)
 
 (defn make-registry-from-files

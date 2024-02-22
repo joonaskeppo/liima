@@ -105,10 +105,24 @@
                         (let [next-zloc (z/up (remove-keys childloc selection))]
                           (handle! next-zloc selected-meta-map)))))))))
 
+;; TODO: improve on this
+(defn guess-namespace
+  "Find next ns form's name from current zipper location"
+  [zloc]
+  (->> zloc
+       (iterate z/right)
+       (take-while (complement z/end?))
+       (some (fn [zloc]
+               (when (= 'ns (or (some-> zloc z/down z/down z/node :value)
+                                (some-> zloc z/down z/node :value)))
+                 (or (some-> zloc z/down z/down z/right z/node :string-value)
+                     (some-> zloc z/down z/right z/node :string-value)))))))
+
 (comment
   (-> (z/of-string "^{:liima/thing 1 :liima/other :thing} (def ^:liima/thing a 1)")
       drop-meta
       z/string)
+
   (-> (z/of-string "^{:liima/thing 1 :liima/other :thing} (def ^:liima/thing a 1)")
       (clean-meta #(= "liima" (namespace %)) (constantly nil))
       z/string))
