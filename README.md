@@ -4,7 +4,17 @@ A one-trick-pony utility for gluing modified snippets of Clojure code into your 
 
 Based on `rewrite-clj`.
 
-## A Contrived Example
+## Why?
+
+Code is hardly ever optimized for pedagogy.
+Unlike org-babel, WEB, or noweb, most literate-programming-inspired tools I know of are lacking in one crucial aspect: the sheer difficulty of "out-of-order" presentation of ideas (from the perspective of the resultant code).
+So, I wanted to experiment and try out something that:
+- would provide the bare minimum for creating out-of-order documentation using fragments of actual code, and that
+- wouldn't cause noticeable changes in workflow to any of my coworkers.
+
+## Usage
+
+### A Contrived Example
 
 Supposing you had the following code on your classpath:
 
@@ -29,7 +39,7 @@ First, add some metadata:
   (+ 1 1))
 ```
 
-Now we can create a registry of all liima references on the classpath, and use that to generate the desired string, like so:
+Now we can create a registry of all Liima references on the classpath, and use that to generate the desired string, like so:
 
 ```clj
 (require '[liima.core :as liima])
@@ -56,14 +66,45 @@ Easy:
 (liima/resolve-content registry :my.ns/print)       ; same thing
 ```
 
-## Why?
+### Templating
 
-Good question.
+Liima has some super basic templating helpers under `liima.docs`.
+Using the example from the previous section, we could write Markdown like so:
 
-- I had a rough idea for a super minimal, literate-programming-adjacent utility after trying out the infinitely more interesting [Clerk](https://github.com/nextjournal/clerk).
-- I was bored, and it was the weekend.
+````md
+Here's a neat function:
 
-You know how it goes.
+```
+{{@content :my.ns/my-fn :my.ns/print "<<println>>"}}
+```
+
+where `<<println>>` is: `{{@content :my.ns/print}}`
+
+````
+
+Instead of using `liima.core/resolve-content`, we could use `liima.docs/replace-templates`:
+
+```clj
+(liima.docs/replace-templates registry markdown-string)
+```
+
+and we would get:
+
+````md
+Here's a neat function:
+
+```
+(defn my-fn
+  "An example fn for demonstrative purposes"
+  []
+  <<println>>
+  (+ 1 1))
+```
+
+where `<<println>>` is: `(println "hello world!")`
+````
+
+Currently, only `@content` and `@ns` (for attempted inference of the code block's namespace) are supported.
 
 ## Limitations
 
