@@ -32,11 +32,11 @@ First, add some metadata:
 Now we can create a registry of all liima references on the classpath, and use that to generate the desired string, like so:
 
 ```clj
-(require '[liima.blocks :as lb])
+(require '[liima.core :as liima])
 
-(def registry (lb/make-registry-from-classpath))
+(def registry (liima/make-registry-from-classpath))
 
-(lb/resolve-content registry :my.ns/my-fn {:my.ns/print "<<println>>"})
+(liima/resolve-content registry :my.ns/my-fn {:my.ns/print "<<println>>"})
 ```
 
 As a result of the `resolve-content` call, we get a stringified version of that original fn with the `println` form replaced:
@@ -52,8 +52,8 @@ What if we just wanted to grab that `println`?
 Easy:
 
 ```clj
-(lb/resolve-content registry :my.ns/print {})    ; just return the stringified `println` form; nothing to replace
-(lb/resolve-content registry :my.ns/print)       ; same thing
+(liima/resolve-content registry :my.ns/print {})    ; just return the stringified `println` form; nothing to replace
+(liima/resolve-content registry :my.ns/print)       ; same thing
 ```
 
 ## Why?

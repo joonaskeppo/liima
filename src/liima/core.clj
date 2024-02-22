@@ -1,4 +1,4 @@
-(ns liima.blocks
+(ns liima.core
   "Definitions and tools related to code blocks"
   (:require [clojure.string :as str]
             [rewrite-clj.zip :as z]

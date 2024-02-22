@@ -1,10 +1,10 @@
 (ns liima.docs
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
-            [liima.blocks]))
+            [liima.core]))
 
 (def ^:private recognized-resolvers
-  {"content" liima.blocks/resolve-content
+  {"content" liima.core/resolve-content
    "ns"      (constantly "TODO")})
 
 (def ^:private re-template
