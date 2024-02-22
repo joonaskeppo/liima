@@ -7,5 +7,4 @@
  :aliases
  {:test   {:extra-paths ["test"]
            :extra-deps  {lambdaisland/kaocha {:mvn/version "1.86.1355"}}
-           :main-opts   ["-m" "kaocha.runner"]}
-  :hiccup {:extra-deps {hiccup/hiccup {:mvn/version "2.0.0-RC1"}}}}}
+           :main-opts   ["-m" "kaocha.runner"]}}}

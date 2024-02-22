@@ -1,12 +1,7 @@
 (ns liima.blocks-test
   (:require [clojure.test :refer [deftest is testing]]
-            [liima.blocks :refer [resolve-content sync-registry-with-string!]]))
-
-(defn make-registry [strs]
-  (let [!registry (atom {})]
-    (doseq [s strs]
-      (sync-registry-with-string! !registry s))
-    !registry))
+            [liima.test-util :refer [make-registry]]
+            [liima.blocks :refer [resolve-content]]))
 
 (deftest test-resolve-content
   (testing "with nested reference"
