@@ -82,13 +82,11 @@ where `<<println>>` is: `{{@content :my.ns/print}}`
 
 ````
 
-Instead of using `liima.core/resolve-content`, we could use `liima.docs/replace-templates`:
+Instead of using `liima.core/resolve-content`, we could use `liima.docs/replace-templates`, which replaces all templates in the string:
 
 ```clj
 (liima.docs/replace-templates registry markdown-string)
 ```
-
-and we would get:
 
 ````md
 Here's a neat function:
