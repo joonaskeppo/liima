@@ -1,8 +1,7 @@
 {:paths ["src" "resources"]
 
  :deps
- {org.clojure/java.classpath  {:mvn/version "1.0.0"}
-  rewrite-clj/rewrite-clj     {:mvn/version "1.1.47"}}
+ {rewrite-clj/rewrite-clj     {:mvn/version "1.1.47"}}
 
  :aliases
  {:test   {:extra-paths ["test"]

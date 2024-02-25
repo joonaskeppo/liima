@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [rewrite-clj.zip :as z]
             [rewrite-clj.node.protocols :as node.protocols]
+            [liima.util :refer [atom?]]
             [liima.rewrite]
             [liima.fs])
   (:import [java.io File]))
@@ -35,6 +36,8 @@
   node.protocols/NodeCoerceable
   (coerce [form] form))
 
+(defn- maybe-deref [x] (if (atom? x) @x x))
+
 (defn upsert-block!
   "Upserts a new Block into `!registry` under `block-id`.
   Creates, then assocs, a Block object with `block-id` and `content`.
@@ -48,15 +51,15 @@
 (defn replace-block
   "Replace references of `block-id` in string `s` with `replacement`.
    `block-id` must be a unique entry within `!registry`."
-  [registry s block-id replacement]
-  (let [uuid (get-in registry [block-id :uuid])]
+  [!registry s block-id replacement]
+  (let [uuid (get-in (maybe-deref !registry) [block-id :uuid])]
     (str/replace s (make-block-str uuid) replacement)))
 
 (defn find-blocks
   "Find all unique block ids in string `s` using `!registry`.
   Block ids are expected to be found as unique entries in the registry."
-  [registry s]
-  (when-let [uuid->block-id (some->> registry vals (map (juxt :uuid :block-id)) (into {}))]
+  [!registry s]
+  (when-let [uuid->block-id (some->> !registry maybe-deref vals (map (juxt :uuid :block-id)) (into {}))]
     (some->> (re-seq block-regex s)
              (map (comp uuid->block-id second))
              set)))
@@ -66,12 +69,13 @@
   `replacements` should be a map of block ids to content strings.
   If the parent content string contains block references not included in `replacements`,
   the referenced blocks' original content strings will be used (as found in the registry)."
-  ([registry block-id]
-   (resolve-content registry block-id {}))
-  ([registry block-id replacements]
-   (let [content               (get-in registry [block-id :content])
-         blocks-needed         (find-blocks registry content)
-         default-replacements  (->> registry
+  ([!registry block-id]
+   (resolve-content !registry block-id {}))
+  ([!registry block-id replacements]
+   (let [reg                   (maybe-deref !registry)
+         content               (get-in reg [block-id :content])
+         blocks-needed         (find-blocks reg content)
+         default-replacements  (->> reg
                                     (keep (fn [[k v]]
                                             (when (contains? blocks-needed k)
                                               [k (:content v)])))
@@ -79,7 +83,7 @@
          replacements          (select-keys (merge default-replacements replacements) blocks-needed)]
      (if (seq replacements)
        (reduce (fn [acc [ref-name content]]
-                 (replace-block registry acc ref-name content))
+                 (replace-block reg acc ref-name content))
                content
                replacements)
        content))))
@@ -104,7 +108,7 @@
         presumed-ns (liima.rewrite/guess-namespace zloc)
         upsert!     (partial handle-block-upsert-with-zipper! !registry presumed-ns)]
     (liima.rewrite/clean-meta zloc liima-keyword? upsert!))
-  @!registry)
+  !registry)
 
 (defn sync-registry-with-file!
   [!registry ^File file]
@@ -112,7 +116,7 @@
         presumed-ns (liima.rewrite/guess-namespace zloc)
         upsert!     (partial handle-block-upsert-with-zipper! !registry presumed-ns)]
     (liima.rewrite/clean-meta zloc liima-keyword? upsert!))
-  @!registry)
+  !registry)
 
 (defn make-registry-from-files
   "Create a registry of blocks using `files`.
@@ -121,10 +125,15 @@
   (let [!registry (atom {})]
     (doseq [file files]
       (sync-registry-with-file! !registry file))
-    @!registry))
+    !registry))
 
-(def make-registry-from-classpath
-  "Create a registry of blocks using classpath.
+(defn make-registry-for-project
+  "Create a registry of blocks either using presumed project root unless `path` provided.
   Returns registry."
-  (comp make-registry-from-files liima.fs/find-classpath-files))
+  ([]
+   (make-registry-for-project "."))
+  ([path]
+   (-> path
+       liima.fs/find-clj-files
+       make-registry-from-files)))
 
