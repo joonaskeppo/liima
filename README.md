@@ -75,17 +75,17 @@ Using the example from the previous section, we could write Markdown like so:
 Here's a neat function:
 
 ```
-{{@content :my.ns/my-fn :my.ns/print "<<println>>"}}
+@{{content :my.ns/my-fn :my.ns/print "<<println>>"}}
 ```
 
-where `<<println>>` is: `{{@content :my.ns/print}}`
+where `<<println>>` is: `@{{content :my.ns/print}}`
 
 ````
 
-Instead of using `liima.core/resolve-content`, we could use `liima.docs/replace-templates`, which replaces all templates in the string:
+Instead of using `liima.core/resolve-content`, we could use `liima.docs/replace-references`, which replaces all templates or links in the string:
 
 ```clj
-(liima.docs/replace-templates registry markdown-string)
+(liima.docs/replace-references registry markdown-string)
 ```
 
 ````md
@@ -102,7 +102,18 @@ Here's a neat function:
 where `<<println>>` is: `(println "hello world!")`
 ````
 
-Currently, only `@content` and `@ns` (for attempted inference of the code block's namespace) are supported.
+For content replacements, currently only `content` and `ns` (for attempted inference of the code block's namespace) are supported.
+Links can be replaced by appending the typical Markdown notation with `@`, like so:
+
+```
+@[My Link](./linked-page.md)
+```
+
+which would become
+
+```
+[My Link](./linked-page/index.html)
+```
 
 ## Limitations
 

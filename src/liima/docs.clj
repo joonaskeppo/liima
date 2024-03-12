@@ -9,12 +9,52 @@
    "ns"      (fn [reg block-id] (get-in reg [block-id :presumed-ns]))})
 
 (defn open-brackets? [s]
-  (str/starts-with? s "{{"))
+  (str/starts-with? s "@{{"))
 
 (defn close-brackets? [s]
   (str/starts-with? s "}}"))
 
+(defn maybe-link? [s]
+  (str/starts-with? s "@["))
+
 (defn- quote? [[ch]] (= \" ch))
+
+(defn- read-link
+  [s]
+  (when-let [[link description filepath] (re-find #"@\[([^\]\[]+)\]\(([^\(\)]+)\)" s)]
+    [(subs s (count link))
+     [link (format "[%s](%s)"
+                   description
+                   (some->> (re-find #"^(.+).md$" filepath) second (format "%s/index.html")))]]))
+
+(defn- read-template
+  [s]
+  (let [[_ resolver-type]  (re-find #"^@\{\{(ns|content)" s)
+        [templ s]          (when resolver-type
+                             (loop [templ "" s s]
+                               (cond
+                                 (close-brackets? s)
+                                 [(str templ (subs s 0 2)) (subs s 2)]
+
+                                 (quote? s)
+                                 (if-let [s* (re-find #"^\".*\"" s)]
+                                   (recur (str templ s*) (subs s (count s*)))
+                                   (throw
+                                    (ex-info "Expected closing \" character inside template"
+                                             {:template (subs s 0 20)})))
+
+                                 (empty? s)
+                                 (throw
+                                  (ex-info "Expected closing }} for template"
+                                           {:template (subs s 0 20)}))
+
+                                 :else
+                                 (recur (str templ (first s)) (subs s 1)))))
+        templ-args         (->> (subs templ (count (format "@{{%s" resolver-type)) (- (count templ) 2))
+                                (format "[%s]")
+                                edn/read-string)]
+    (when templ
+      [s [templ resolver-type templ-args]])))
 
 (defn- read-templates
   "Find instances of Liima templates in string `s`"
@@ -22,63 +62,43 @@
    (read-templates [] s))
   ([acc s]
    (cond
-     (open-brackets? s)
-     (let [[_ resolver-type]  (re-find #"^\{\{@(ns|content)" s)
-           [templ s]          (when resolver-type
-                                (loop [templ "" s s]
-                                  (cond
-                                    (close-brackets? s)
-                                    [(str templ (subs s 0 2)) (subs s 2)]
+     (maybe-link? s)     (if-let [[s* link+replacement] (read-link s)]
+                           (recur (conj acc [::link link+replacement]) s*)
+                           (recur acc (subs s 1)))
+     (open-brackets? s)  (if-let [[s* template] (read-template s)]
+                           (recur (conj acc [::template template]) s*)
+                           (recur acc (subs s 1)))
+     (empty? s)           acc
+     :else                (recur acc (subs s 1)))))
 
-                                    (quote? s)
-                                    (if-let [s* (re-find #"^\".*\"" s)]
-                                      (recur (str templ s*) (subs s (count s*)))
-                                      (throw
-                                       (ex-info "Expected closing \" character inside template"
-                                                {:template (subs s 0 20)})))
+(defmulti replace-item
+  (fn [_ _ [item-type]]  item-type))
 
-                                    (empty? s)
-                                    (throw
-                                     (ex-info "Expected closing }} for template"
-                                              {:template (subs s 0 20)}))
+(defmethod replace-item ::template
+  [!registry s [_ [template ttype [block-id & block-args]]]]
+  (let [f           (get recognized-resolvers ttype)
+        block-opts  (into {} (mapv vec (partition 2 block-args)))
+        replacement (if (seq block-opts)
+                      (f !registry block-id block-opts)
+                      (f !registry block-id))]
+    (str/replace-first s template replacement)))
 
-                                    :else
-                                    (recur (str templ (first s)) (subs s 1)))))
-           templ-args         (->> (subs templ (count (format "{{@%s" resolver-type)) (- (count templ) 2))
-                                   (format "[%s]")
-                                   edn/read-string)]
-       (if templ
-         (recur (conj acc [templ resolver-type templ-args]) s)
-         (recur acc s)))
+(defmethod replace-item ::link
+  [_ s [_ [original-link replacement]]]
+  (str/replace-first s original-link replacement))
 
-     (empty? s)
-     acc
-
-     :else
-     (recur acc (subs s 1)))))
-
-(defn replace-templates
-  "Find instances of Liima templates in string `s`,
+(defn replace-references
+  "Find instances of Liima references in string `s`,
   and replace them using the appropriate fns using content in `registry`."
   [!registry s]
   (let [templates (read-templates s)]
-    (reduce (fn [s [template ttype [block-id & block-args]]]
-              (let [f           (get recognized-resolvers ttype)
-                    block-opts  (into {} (mapv vec (partition 2 block-args)))
-                    replacement (if (seq block-opts)
-                                  (f !registry block-id block-opts)
-                                  (f !registry block-id))]
-                (str/replace-first s template replacement)))
-            s
-            templates)))
+    (reduce #(replace-item !registry %1 %2) s templates)))
 
 ;; process:
 ;; 1. from `path-to-docs`, we read in all files recursively
 ;; 2. if manifest.edn found, process it -> configuration
 ;; 3. for all .md files found, slurp them, and process them -> spit to output dir (e.g., some-note.md -> target/docs/some-note/index.html)
-;; links like [./some-note.md](Some Note) could be automatically handled (./some-note/index.html)
-
-;; TODO: `@` as generic "deref" symbol (e.g., @{{content ...}} -> content or @[./thing.md](Thing) -> updated link)
+;; links like [Some Note](./some-note.md) could be automatically handled (./some-note/index.html)
 
 (defn process-docs!
   "Process all documents, optionally via `opts`.
@@ -105,7 +125,7 @@
                                      make-file-output-path
                                      (liima.fs/combine-paths output-root))]]
        (->> note-content
-            (replace-templates !registry)
+            (replace-references !registry)
             compile-doc
             (spit output-path))))))
 
